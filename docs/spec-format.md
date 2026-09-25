@@ -85,10 +85,9 @@ either fail to find a component's geometry or, worse, patch the wrong one.
   pattern search (`tft::patch_text`/`patch_geom`), which doesn't need to
   know the record layout at all.
 - **No font/image data.** `font` only changes which already-compiled font
-  *id* a component references — this toolkit has no font compiler and
-  never will until someone reverse-engineers the `.zi` font-blob format
-  (see [`docs/formats/nextion-zi-font-format.md`](formats/nextion-zi-font-format.md)
-  for what's understood so far and exactly where that stops).
+  *id* a component references. The `.zi` format itself is now specified
+  (see [`docs/formats/nextion-zi-font-format.md`](formats/nextion-zi-font-format.md)),
+  but the `.tft` font directory needed to add a font is not (§12 there).
 - **No structural changes.** Components aren't added, removed, or
   reordered. A spec can't introduce a new `objname` that isn't already in
   the scaffold.

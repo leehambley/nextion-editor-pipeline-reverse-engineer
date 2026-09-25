@@ -13,6 +13,7 @@ pub mod html;
 pub mod spec;
 pub mod target;
 pub mod tft;
+pub mod zi;
 
-pub use error::{HmiError, SpecError, TftError};
+pub use error::{HmiError, SpecError, TftError, ZiError};
 pub use target::Target;

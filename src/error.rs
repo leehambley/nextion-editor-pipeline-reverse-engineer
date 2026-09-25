@@ -131,3 +131,25 @@ pub enum SpecError {
     #[error("spec component {objname:?} has no current geometry in the scaffold to search for")]
     MissingScaffoldGeometry { objname: String },
 }
+
+#[derive(Debug, thiserror::Error)]
+pub enum ZiError {
+    #[error("file shorter than its header/glyph table")]
+    Truncated,
+
+    #[error("bad .zi magic byte {0:#04x}, expected 0x04")]
+    BadMagic(u8),
+
+    #[error("glyph {char_id:#06x}: data offset/length points outside the file")]
+    GlyphOutOfBounds { char_id: u16 },
+
+    #[error("unknown glyph encoding byte {0}")]
+    UnknownPackingScheme(u8),
+
+    #[error("glyph {char_id:#06x}: decoded {actual} pixels, expected {expected}")]
+    PixelCountMismatch {
+        char_id: u16,
+        expected: usize,
+        actual: usize,
+    },
+}
