@@ -82,6 +82,7 @@ either fail to find a component's geometry or, worse, patch the wrong one.
 
 ## Example
 
-See [`examples/page0.yaml`](../examples/page0.yaml) for a worked example
-adapted from the original reverse-engineering session's draft DSL, tied to
-a specific firmware's touch-id table.
+See [`examples/els-page0.yaml`](../examples/els-page0.yaml) for a full
+worked example: a complete page-0 layout for a NanoEls-style ELS
+(Electronic Lead Screw) firmware, with every component tied to that
+firmware's touch-id table via comments.

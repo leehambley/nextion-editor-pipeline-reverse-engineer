@@ -1,0 +1,409 @@
+# Full page-0 layout for the NanoEls-style ELS (Electronic Lead Screw)
+# firmware whose `ui::Key`/`nextion.rs::key_for` this is built against.
+#
+# THIS IS TASK 1 (layout design) ONLY -- a content/design artifact, not
+# something you can `nxtft compile` today. Turning it into a real .HMI/
+# .tft is Task 2 (see docs/formats/nextion-tft-format.md section 6 and
+# docs/targets.md's "compiling without the Nextion Editor" section for
+# why that's a separate, harder problem with its own open questions).
+#
+# Every `Key` variant in ui.rs and every firmware component id in
+# nextion.rs's `key_for()` has exactly one component below -- cross-check
+# both ways before changing ids. `id` is kept as a comment (not a real
+# spec field) for the same reason the original draft
+# (inputs-from-claude/future_ui_page0.yaml) did: it's the contract with
+# the firmware side, so whatever eventually gets built from this needs
+# each named component to end up with that exact id.
+#
+# Zones (800x480):
+#   - Top strip (y 0-70): RPM / SPEED / ANGLE / TURNS readouts, plus a
+#     separated SETUP button in the corner (per user request: readouts
+#     grouped, config button visually distinct).
+#   - Left column (x 0-280): the "virtual nut" engage/disengage toggle,
+#     made large per user request, plus reverse/unit/step-cycle controls
+#     and the 5-way step-size selector below it.
+#   - Middle column (x 280-540): current pitch display, +/- step nudges,
+#     zero-Z, and the jog controls (left/right/cycle).
+#   - Right column (x 540-800): phone-style numeric keypad with
+#     Backspace and Enter both large and clearly separated from the
+#     digit grid (per user request), plus the two travel-stop buttons
+#     in the space below the keypad.
+#
+# Design decisions worth a human sanity-check before building anything:
+#   - The old h5.HMI's `bStatus`/`bOff` both mapped to firmware id 3
+#     (Disengage) alongside id 23, which the original draft flagged as
+#     possibly a legacy/unused duplicate. This layout drops id 23
+#     entirely and uses only id 3 for the "disengaged" half of the
+#     virtual-nut toggle -- confirm the firmware doesn't still expect a
+#     component using id 23 anywhere.
+#   - The virtual-nut toggle is modeled as two same-position buttons
+#     (`bVirtualNutOff` id 3, `bVirtualNutOn` id 25) with the firmware
+#     expected to show one and hide the other via a `vis` instruction on
+#     state change -- a standard Nextion technique, not a new component
+#     type. `nextion.rs` doesn't currently send `vis` commands; that's a
+#     firmware-side gap this layout exposes, not something this repo's
+#     toolkit can fix.
+#   - `bStep` (id 7, CycleStep) is modeled as a single button that both
+#     displays the current step size *and* cycles it on tap, resolving
+#     the original draft's open question about whether "bStep" and a
+#     separate "tStepVal" label were meant to be one component or two --
+#     here they're one, showing e.g. "STEP: 0.100mm".
+#   - RPM/SPEED readouts have no `Key` mapping in ui.rs (read-only
+#     displays) so they get no firmware-meaningful id; marked `id: n/a`.
+#   - One keypad grid cell (row 4, column 3) is intentionally left empty
+#     -- there are only 10 digits + point to place in a 3-wide grid, and
+#     forcing an 11th control into that slot didn't have an obvious
+#     candidate. Free for whatever's missing once this is reviewed.
+
+target: NX8048P050-011R-Y
+page: page0
+
+components:
+  # ============================================================
+  # Top strip: readouts + separated setup button (y: 0-70)
+  # ============================================================
+  - objname: tRpmLabel      # id: n/a (static label, read-only)
+    type: t
+    x: 10
+    y: 6
+    w: 165
+    h: 18
+    txt: "RPM"
+
+  - objname: tRpmVal        # id: n/a (read-only, firmware writes value via encode_text)
+    type: t
+    x: 10
+    y: 26
+    w: 165
+    h: 38
+    txt: "0"
+    font: 2
+
+  - objname: tSpeedLabel    # id: n/a
+    type: t
+    x: 185
+    y: 6
+    w: 165
+    h: 18
+    txt: "SPEED"
+
+  - objname: tSpeedVal      # id: n/a
+    type: t
+    x: 185
+    y: 26
+    w: 165
+    h: 38
+    txt: "0"
+    font: 2
+
+  - objname: tAngleLabel    # id: n/a
+    type: t
+    x: 360
+    y: 6
+    w: 165
+    h: 18
+    txt: "ANGLE"
+
+  - objname: tAngle         # firmware id 10 -- Key::ZeroTurns (tap value to zero)
+    type: t
+    x: 360
+    y: 26
+    w: 165
+    h: 38
+    txt: "0.0"
+    font: 2
+
+  - objname: tTurnsLabel    # id: n/a
+    type: t
+    x: 535
+    y: 6
+    w: 165
+    h: 18
+    txt: "TURNS"
+
+  - objname: tTurns         # firmware id 9 -- Key::ZeroTurns (tap value to zero)
+    type: t
+    x: 535
+    y: 26
+    w: 165
+    h: 38
+    txt: "0"
+    font: 2
+
+  - objname: bSetup         # firmware id 59 -- Key::Setup
+    type: b
+    x: 715
+    y: 5
+    w: 75
+    h: 60
+    txt: "SETUP"
+
+  # ============================================================
+  # Left column: virtual-nut toggle + mode row + step controls
+  # ============================================================
+  - objname: bVirtualNutOff   # firmware id 3 -- Key::Disengage (visible when disengaged)
+    type: b
+    x: 10
+    y: 85
+    w: 260
+    h: 180
+    txt: "DISENGAGED"
+    bco: 0x39c7   # dim red/grey -- placeholder RGB565
+
+  - objname: bVirtualNutOn    # firmware id 25 -- Key::Engage (visible when engaged, same geometry)
+    type: b
+    x: 10
+    y: 85
+    w: 260
+    h: 180
+    txt: "ENGAGED"
+    bco: 0x0640   # green -- placeholder RGB565
+
+  - objname: bReverse       # firmware id 5 -- Key::Reverse
+    type: b
+    x: 10
+    y: 280
+    w: 125
+    h: 60
+    txt: "REV"
+
+  - objname: bMeasure       # firmware id 6 -- Key::ToggleUnit
+    type: b
+    x: 145
+    y: 280
+    w: 125
+    h: 60
+    txt: "mm/in"
+
+  - objname: bStep          # firmware id 7 -- Key::CycleStep (shows + cycles current step size)
+    type: b
+    x: 10
+    y: 350
+    w: 260
+    h: 60
+    txt: "STEP: 0.100mm"
+
+  - objname: bStepSize0     # firmware id 53 -- Key::StepSize(0)
+    type: b
+    x: 10
+    y: 420
+    w: 50
+    h: 50
+    txt: "0.01"
+
+  - objname: bStepSize1     # firmware id 54 -- Key::StepSize(1)
+    type: b
+    x: 62
+    y: 420
+    w: 50
+    h: 50
+    txt: "0.05"
+
+  - objname: bStepSize2     # firmware id 55 -- Key::StepSize(2)
+    type: b
+    x: 114
+    y: 420
+    w: 50
+    h: 50
+    txt: "0.1"
+
+  - objname: bStepSize3     # firmware id 56 -- Key::StepSize(3)
+    type: b
+    x: 166
+    y: 420
+    w: 50
+    h: 50
+    txt: "0.5"
+
+  - objname: bStepSize4     # firmware id 57 -- Key::StepSize(4)
+    type: b
+    x: 218
+    y: 420
+    w: 52
+    h: 50
+    txt: "1.0"
+
+  # ============================================================
+  # Middle column: pitch display, +/-, zero-Z, jog
+  # ============================================================
+  - objname: tPitch         # id: n/a (read/entry display, no touch handler in ui.rs today)
+    type: t
+    x: 290
+    y: 85
+    w: 250
+    h: 70
+    txt: "0.000 mm"
+    font: 2
+
+  - objname: bMinus         # firmware id 43 -- Key::Minus
+    type: b
+    x: 290
+    y: 165
+    w: 115
+    h: 60
+    txt: "-"
+
+  - objname: bPlus          # firmware id 42 -- Key::Plus
+    type: b
+    x: 425
+    y: 165
+    w: 115
+    h: 60
+    txt: "+"
+
+  - objname: bZ0            # firmware id 21 -- Key::ZeroZ
+    type: b
+    x: 290
+    y: 235
+    w: 250
+    h: 60
+    txt: "ZERO Z"
+
+  - objname: bJogLeft       # firmware id 48 -- Key::Jog{left:true} (needs press+release, see nextion.rs)
+    type: b
+    x: 290
+    y: 305
+    w: 115
+    h: 60
+    txt: "JOG <"
+
+  - objname: bJogRight      # firmware id 49 -- Key::Jog{left:false} (needs press+release)
+    type: b
+    x: 425
+    y: 305
+    w: 115
+    h: 60
+    txt: "JOG >"
+
+  - objname: bJogCycle      # firmware id 58 -- Key::JogCycle (shows + cycles current jog distance)
+    type: b
+    x: 290
+    y: 375
+    w: 250
+    h: 60
+    txt: "JOG DIST: 1.0mm"
+
+  # ============================================================
+  # Right column: phone-style keypad, backspace/enter, stops
+  # ============================================================
+  - objname: bDigit1        # firmware id 27 -- Key::Digit(1)
+    type: b
+    x: 545
+    y: 85
+    w: 55
+    h: 55
+    txt: "1"
+
+  - objname: bDigit2        # firmware id 28 -- Key::Digit(2)
+    type: b
+    x: 608
+    y: 85
+    w: 55
+    h: 55
+    txt: "2"
+
+  - objname: bDigit3        # firmware id 29 -- Key::Digit(3)
+    type: b
+    x: 671
+    y: 85
+    w: 55
+    h: 55
+    txt: "3"
+
+  - objname: bBackspace     # firmware id 24 -- Key::Backspace (top-right of keypad for visibility)
+    type: b
+    x: 734
+    y: 85
+    w: 55
+    h: 55
+    txt: "<-"
+
+  - objname: bDigit4        # firmware id 30 -- Key::Digit(4)
+    type: b
+    x: 545
+    y: 148
+    w: 55
+    h: 55
+    txt: "4"
+
+  - objname: bDigit5        # firmware id 31 -- Key::Digit(5)
+    type: b
+    x: 608
+    y: 148
+    w: 55
+    h: 55
+    txt: "5"
+
+  - objname: bDigit6        # firmware id 32 -- Key::Digit(6)
+    type: b
+    x: 671
+    y: 148
+    w: 55
+    h: 55
+    txt: "6"
+
+  - objname: bEnter         # firmware id 51 -- Key::Enter (large, spans rows 2-4 for visibility)
+    type: b
+    x: 734
+    y: 148
+    w: 55
+    h: 181
+    txt: "OK"
+
+  - objname: bDigit7        # firmware id 33 -- Key::Digit(7)
+    type: b
+    x: 545
+    y: 211
+    w: 55
+    h: 55
+    txt: "7"
+
+  - objname: bDigit8        # firmware id 34 -- Key::Digit(8)
+    type: b
+    x: 608
+    y: 211
+    w: 55
+    h: 55
+    txt: "8"
+
+  - objname: bDigit9        # firmware id 35 -- Key::Digit(9)
+    type: b
+    x: 671
+    y: 211
+    w: 55
+    h: 55
+    txt: "9"
+
+  - objname: bPoint         # firmware id 52 -- Key::Point
+    type: b
+    x: 545
+    y: 274
+    w: 55
+    h: 55
+    txt: "."
+
+  - objname: bDigit0        # firmware id 26 -- Key::Digit(0)
+    type: b
+    x: 608
+    y: 274
+    w: 55
+    h: 55
+    txt: "0"
+
+  # (671,274,55,55) intentionally left empty -- see header note.
+
+  - objname: bStopLeft      # firmware id 40 -- Key::StopLeft
+    type: b
+    x: 545
+    y: 340
+    w: 120
+    h: 60
+    txt: "STOP <"
+
+  - objname: bStopRight     # firmware id 41 -- Key::StopRight
+    type: b
+    x: 675
+    y: 340
+    w: 120
+    h: 60
+    txt: "STOP >"

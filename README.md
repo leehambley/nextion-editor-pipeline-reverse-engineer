@@ -100,8 +100,8 @@ nxtft compile \
 ```
 
 See [`docs/spec-format.md`](docs/spec-format.md) for the spec schema and
-[`examples/page0.yaml`](examples/page0.yaml) for a worked example, and
-[`docs/formats/nextion-tft-format.md`](docs/formats/nextion-tft-format.md) §6
+[`examples/els-page0.yaml`](examples/els-page0.yaml) for a full worked
+example, and [`docs/formats/nextion-tft-format.md`](docs/formats/nextion-tft-format.md) §6
 for why a scaffold is required at all.
 
 ## Testing
