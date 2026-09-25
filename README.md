@@ -21,11 +21,16 @@ section before filing an issue that this doesn't do X.
   by id, never generated or re-encoded. `compile` can point a component
   at a font id that's already compiled into your scaffold; it can't add
   a new font.
-- **A subset of controls.** The compiled-record layout is only confirmed
-  for text-type (`t`) components. Text and geometry patching work on any
-  component type (they search for byte patterns rather than needing to
-  know the record shape), but color/font patching is refused for anything
-  that isn't `t` — see [`docs/formats/nextion-tft-format.md`](docs/formats/nextion-tft-format.md) §2.
+- **A subset of controls.** The compiled record layout is confirmed for
+  text-type (`t`) and button-type (`b`) components; text and geometry
+  patching work on any component type (they search for byte patterns
+  rather than needing to know the record shape). Color/font patching is
+  refused for anything else, and for the still-unconfirmed fields on `b`
+  (`pco`/`pco2`, `pic`/`pic2`) — see
+  [`docs/formats/nextion-tft-format.md`](docs/formats/nextion-tft-format.md) §2/§2b.
+  `type: m` (very likely a Nextion Hotspot — an invisible touch region
+  with no visual attributes at all, see the `.HMI` format doc §3.2) has
+  no compiled color/font record to patch and isn't supported in any way.
 - **No component add/remove.** Neither the `.HMI` project format nor the
   `.tft` compiled format's component-count bookkeeping has been cracked
   yet. This toolkit only ever changes *existing* components' text,
@@ -103,6 +108,19 @@ See [`docs/spec-format.md`](docs/spec-format.md) for the spec schema and
 [`examples/els-page0.yaml`](examples/els-page0.yaml) for a full worked
 example, and [`docs/formats/nextion-tft-format.md`](docs/formats/nextion-tft-format.md) §6
 for why a scaffold is required at all.
+
+### Preview a spec as HTML, no scaffold needed
+
+```bash
+nxtft render-html ui-spec.yaml preview.html
+```
+
+Renders the same YAML spec `compile` consumes as a plain static HTML page
+-- absolutely-positioned, deliberately crude (flat grey, `outset`/`inset`
+borders, no shadows or gradients) boxes for layout/spacing checks in a
+browser. Useful for iterating on a layout before it exists as a real
+scaffold `.HMI`/`.tft` at all, since this path never touches either
+Nextion format.
 
 ## Testing
 

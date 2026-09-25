@@ -63,3 +63,50 @@ fn ellip_text_is_ambiguous_without_more_context() {
         nextion_tft_toolkit::TftError::Ambiguous { count: 2, .. }
     ));
 }
+
+#[test]
+fn button_record_layout_matches_known_hmi_values_for_bd0() {
+    // bD0 (digit-0 keypad button) is bco=0, bco2=52857 (0xce79), font=0 per
+    // the .HMI decode -- confirms tft.rs's button_record_offset::{BCO,BCO2,
+    // FONT} against real hardware output, not just a synthetic fixture.
+    // Geometry (603,410,56,70) is ambiguous in this file (a coincidentally
+    // identical-geometry button on a different page has different colors),
+    // so this locates the record directly rather than via geometry search.
+    let data = load_bytes();
+    let rec_start = 0xc0818;
+
+    let bco = u16::from_le_bytes([
+        data[rec_start + tft::button_record_offset::BCO],
+        data[rec_start + tft::button_record_offset::BCO + 1],
+    ]);
+    let bco2 = u16::from_le_bytes([
+        data[rec_start + tft::button_record_offset::BCO2],
+        data[rec_start + tft::button_record_offset::BCO2 + 1],
+    ]);
+    let font = data[rec_start + tft::button_record_offset::FONT];
+
+    assert_eq!(bco, 0);
+    assert_eq!(bco2, 52857);
+    assert_eq!(font, 0);
+}
+
+#[test]
+fn patches_button_background_color_at_confirmed_offset() {
+    let mut data = load_bytes();
+    let rec_start = 0xc0818;
+
+    tft::patch_button_color_font(&mut data, rec_start, Some(0x1234), None, None).unwrap();
+
+    let bco = u16::from_le_bytes([
+        data[rec_start + tft::button_record_offset::BCO],
+        data[rec_start + tft::button_record_offset::BCO + 1],
+    ]);
+    assert_eq!(bco, 0x1234);
+    // bco2/font untouched.
+    let bco2 = u16::from_le_bytes([
+        data[rec_start + tft::button_record_offset::BCO2],
+        data[rec_start + tft::button_record_offset::BCO2 + 1],
+    ]);
+    assert_eq!(bco2, 52857);
+    assert_eq!(data[rec_start + tft::button_record_offset::FONT], 0);
+}

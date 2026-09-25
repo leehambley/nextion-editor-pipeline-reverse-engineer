@@ -9,6 +9,7 @@
 
 pub mod error;
 pub mod hmi;
+pub mod html;
 pub mod spec;
 pub mod target;
 pub mod tft;

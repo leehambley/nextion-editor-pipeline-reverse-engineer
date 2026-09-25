@@ -67,6 +67,9 @@ enum Command {
         #[arg(short, long)]
         output: PathBuf,
     },
+    /// Render a YAML UI spec as a static HTML page for previewing a layout
+    /// in a browser -- no scaffold .HMI/.tft needed.
+    RenderHtml { spec: PathBuf, output: PathBuf },
 }
 
 fn parse_offset(s: &str) -> Result<usize, std::num::ParseIntError> {
@@ -185,6 +188,17 @@ fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
 
             std::fs::write(&output, &tft_data)?;
             println!("wrote {}", output.display());
+        }
+
+        Command::RenderHtml { spec, output } => {
+            let spec = UiSpec::from_file(&spec)?;
+            let html = nextion_tft_toolkit::html::render(&spec);
+            std::fs::write(&output, html)?;
+            println!(
+                "rendered {} component(s) -> {}",
+                spec.components.len(),
+                output.display()
+            );
         }
     }
 

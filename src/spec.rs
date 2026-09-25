@@ -27,9 +27,15 @@ use crate::hmi::{self, AttrValue, Decoded};
 use crate::target::Target;
 use crate::tft;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct ComponentSpec {
     pub objname: String,
+    /// Component class: `t` (text/label), `b` (button), `m` (hotspot -- see
+    /// `docs/formats/nextion-hmi-format.md` §3.2). Not used by `compile`
+    /// today (it reads type from the scaffold `.HMI` instead); used by the
+    /// [`crate::html`] renderer, which has no scaffold to read it from.
+    #[serde(rename = "type")]
+    pub component_type: Option<String>,
     pub x: Option<u16>,
     pub y: Option<u16>,
     pub w: Option<u16>,
@@ -37,6 +43,9 @@ pub struct ComponentSpec {
     pub txt: Option<String>,
     /// Text color (RGB565), e.g. `0xffff` for white.
     pub pco: Option<u16>,
+    /// Background color (RGB565), normal state. See `type`'s doc comment --
+    /// same "not used by `compile`, used by `html`" caveat applies.
+    pub bco: Option<u16>,
     pub font: Option<u8>,
 }
 
@@ -324,6 +333,7 @@ mod tests {
                 txt: Some("ON!".to_string()),
                 pco: None,
                 font: None,
+                ..Default::default()
             }],
         };
 
@@ -352,6 +362,7 @@ mod tests {
                 txt: None,
                 pco: None,
                 font: None,
+                ..Default::default()
             }],
         };
 
@@ -388,6 +399,7 @@ mod tests {
                 txt: None,
                 pco: Some(0x049f),
                 font: Some(5),
+                ..Default::default()
             }],
         };
 
@@ -422,6 +434,7 @@ mod tests {
                 txt: None,
                 pco: Some(0x049f),
                 font: None,
+                ..Default::default()
             }],
         };
 
@@ -445,6 +458,7 @@ mod tests {
                 txt: Some("hi".to_string()),
                 pco: None,
                 font: None,
+                ..Default::default()
             }],
         };
 
@@ -469,6 +483,7 @@ mod tests {
                 txt: Some("OFF".to_string()),
                 pco: None,
                 font: None,
+                ..Default::default()
             }],
         };
 

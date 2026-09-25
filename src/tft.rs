@@ -1,12 +1,20 @@
 //! Parse and patch compiled Nextion `.tft` firmware files.
 //!
 //! Format reference: `docs/formats/nextion-tft-format.md`. Everything here
-//! is a Rust port of `tft_tool.py`, plus one addition ([`patch_component`])
-//! that uses the confirmed 84-byte text-component record layout to patch
-//! color/font directly by offset instead of by pattern search. That layout
-//! is confirmed **only for text-type (`t`) components** -- button records
-//! are known to differ (paired normal/pressed fields) but haven't been
-//! mapped, so [`patch_component`] refuses anything other than `t`.
+//! is a Rust port of `tft_tool.py`, plus two additions that use confirmed
+//! 84-byte component record layouts to patch fields directly by offset
+//! instead of by pattern search:
+//!
+//! - [`patch_component_color_font`] for text-type (`t`) components: `pco`
+//!   (text color) and `font`.
+//! - [`patch_button_color_font`] for button-type (`b`) components: `bco`,
+//!   `bco2` (background color, normal/pressed) and `font`.
+//!
+//! Both are deliberately narrow: only the fields confirmed byte-for-byte
+//! against real hardware output are patchable. `pco`/`pco2` on buttons and
+//! `pic`/`pic2` on either type are not confirmed and have no patch path.
+//! The compiled record layout for `type: m` (Hotspot) components is
+//! entirely unexplored -- there is no patch path for them at all.
 //!
 //! `patch_text` and `patch_geom` don't need to know a component's type at
 //! all: they work by searching for the current bytes, so they apply to any
@@ -46,6 +54,23 @@ pub mod text_record_offset {
     pub const PCO: usize = 0x28;
     pub const TXT_MAXL: usize = 0x2E;
     pub const TEXT_POOL_OFFSET: usize = 0x30;
+}
+
+/// Byte offsets within the confirmed subset of the 84-byte button-component
+/// record (`nextion-tft-format.md` §2b). Only `X/Y/W/H/ENDX/ENDY/FONT/BCO/
+/// BCO2` are confirmed -- `pco`/`pco2` and `pic`/`pic2` are not, and have no
+/// corresponding offsets here on purpose (see the module docs).
+pub const BUTTON_RECORD_LEN: usize = 0x54;
+pub mod button_record_offset {
+    pub const X: usize = 0x10;
+    pub const Y: usize = 0x12;
+    pub const W: usize = 0x14;
+    pub const H: usize = 0x16;
+    pub const ENDX: usize = 0x18;
+    pub const ENDY: usize = 0x1A;
+    pub const FONT: usize = 0x25;
+    pub const BCO: usize = 0x26;
+    pub const BCO2: usize = 0x28;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -217,11 +242,11 @@ pub fn patch_geom(
     Ok(off)
 }
 
-/// Find the (unique) record-start offset for a text-type component by its
-/// `x,y,w,h` quad, i.e. `patch_geom`'s search step without the write --
-/// used by the `compile` pipeline to locate a component's 84-byte record
-/// before touching color/font.
-pub fn find_text_record_by_geometry(data: &[u8], geom: Geometry) -> Result<usize, TftError> {
+/// Find the (unique) record-start offset for a component by its `x,y,w,h`
+/// quad, i.e. `patch_geom`'s search step without the write. Both the text
+/// (§2) and button (§2b) record layouts put the quad at the same `+0x10`
+/// offset from record start, so this one search works for either.
+fn find_record_by_geometry(data: &[u8], geom: Geometry) -> Result<usize, TftError> {
     let (x, y, w, h) = geom;
     let mut needle = Vec::with_capacity(8);
     needle.extend_from_slice(&x.to_le_bytes());
@@ -242,9 +267,22 @@ pub fn find_text_record_by_geometry(data: &[u8], geom: Geometry) -> Result<usize
             hint: "geometry quad is not unique in this file".to_string(),
         });
     }
-    // `patch_geom`'s needle offset *is* the x,y,w,h field's offset, which is
-    // record_start + text_record_offset::X (0x10) per the format doc.
     Ok(hits[0] - text_record_offset::X)
+}
+
+/// Find the (unique) record-start offset for a text-type component by its
+/// `x,y,w,h` quad -- used by the `compile` pipeline to locate a component's
+/// 84-byte record before touching color/font.
+pub fn find_text_record_by_geometry(data: &[u8], geom: Geometry) -> Result<usize, TftError> {
+    find_record_by_geometry(data, geom)
+}
+
+/// Find the (unique) record-start offset for a button-type component by its
+/// `x,y,w,h` quad -- same search as [`find_text_record_by_geometry`], kept
+/// as a separate name for call-site clarity about which record layout the
+/// caller intends to patch next.
+pub fn find_button_record_by_geometry(data: &[u8], geom: Geometry) -> Result<usize, TftError> {
+    find_record_by_geometry(data, geom)
 }
 
 /// Overwrite the confirmed-safe fields of a text-type (`t`) component's
@@ -269,6 +307,37 @@ pub fn patch_component_color_font(
     }
     if let Some(font) = font {
         data[record_start + text_record_offset::FONT] = font;
+    }
+    Ok(())
+}
+
+/// Overwrite the confirmed-safe fields of a button-type (`b`) component's
+/// 84-byte record, located by [`find_button_record_by_geometry`]. Only
+/// `bco`/`bco2` (background color, normal/pressed) and `font` are
+/// supported -- `pco`/`pco2` and `pic`/`pic2` are not confirmed (see
+/// `nextion-tft-format.md` §2b) and have no patch path here.
+pub fn patch_button_color_font(
+    data: &mut [u8],
+    record_start: usize,
+    bco: Option<u16>,
+    bco2: Option<u16>,
+    font: Option<u8>,
+) -> Result<(), TftError> {
+    if record_start + BUTTON_RECORD_LEN > data.len() {
+        return Err(TftError::NotFound(format!(
+            "record at {record_start:#x} would extend past end of file"
+        )));
+    }
+    if let Some(bco) = bco {
+        let off = record_start + button_record_offset::BCO;
+        data[off..off + 2].copy_from_slice(&bco.to_le_bytes());
+    }
+    if let Some(bco2) = bco2 {
+        let off = record_start + button_record_offset::BCO2;
+        data[off..off + 2].copy_from_slice(&bco2.to_le_bytes());
+    }
+    if let Some(font) = font {
+        data[record_start + button_record_offset::FONT] = font;
     }
     Ok(())
 }
@@ -330,6 +399,34 @@ mod tests {
         rec[text_record_offset::PCO..text_record_offset::PCO + 2]
             .copy_from_slice(&pco.to_le_bytes());
         rec[text_record_offset::FONT] = font;
+        rec
+    }
+
+    fn button_component_record(
+        x: u16,
+        y: u16,
+        w: u16,
+        h: u16,
+        bco: u16,
+        bco2: u16,
+        font: u8,
+    ) -> Vec<u8> {
+        let mut rec = vec![0u8; BUTTON_RECORD_LEN];
+        rec[button_record_offset::X..button_record_offset::X + 2].copy_from_slice(&x.to_le_bytes());
+        rec[button_record_offset::Y..button_record_offset::Y + 2].copy_from_slice(&y.to_le_bytes());
+        rec[button_record_offset::W..button_record_offset::W + 2].copy_from_slice(&w.to_le_bytes());
+        rec[button_record_offset::H..button_record_offset::H + 2].copy_from_slice(&h.to_le_bytes());
+        let endx = x + w - 1;
+        let endy = y + h - 1;
+        rec[button_record_offset::ENDX..button_record_offset::ENDX + 2]
+            .copy_from_slice(&endx.to_le_bytes());
+        rec[button_record_offset::ENDY..button_record_offset::ENDY + 2]
+            .copy_from_slice(&endy.to_le_bytes());
+        rec[button_record_offset::BCO..button_record_offset::BCO + 2]
+            .copy_from_slice(&bco.to_le_bytes());
+        rec[button_record_offset::BCO2..button_record_offset::BCO2 + 2]
+            .copy_from_slice(&bco2.to_le_bytes());
+        rec[button_record_offset::FONT] = font;
         rec
     }
 
@@ -501,6 +598,64 @@ mod tests {
     fn patch_component_color_font_errors_past_end_of_file() {
         let mut data = vec![0u8; 10];
         assert!(patch_component_color_font(&mut data, 5, Some(1), None).is_err());
+    }
+
+    #[test]
+    fn find_button_record_by_geometry_locates_record_start() {
+        let rec = button_component_record(603, 410, 56, 70, 0, 52857, 0);
+        let mut data = vec![0u8; 20];
+        data.extend_from_slice(&rec);
+
+        let start = find_button_record_by_geometry(&data, (603, 410, 56, 70)).unwrap();
+        assert_eq!(start, 20);
+    }
+
+    #[test]
+    fn patch_button_color_font_writes_expected_offsets() {
+        let rec = button_component_record(603, 410, 56, 70, 0, 52857, 0);
+        let mut data = rec;
+        patch_button_color_font(&mut data, 0, Some(0xf800), Some(0x0c80), Some(1)).unwrap();
+
+        let bco = u16::from_le_bytes([
+            data[button_record_offset::BCO],
+            data[button_record_offset::BCO + 1],
+        ]);
+        let bco2 = u16::from_le_bytes([
+            data[button_record_offset::BCO2],
+            data[button_record_offset::BCO2 + 1],
+        ]);
+        assert_eq!(bco, 0xf800);
+        assert_eq!(bco2, 0x0c80);
+        assert_eq!(data[button_record_offset::FONT], 1);
+    }
+
+    #[test]
+    fn patch_button_color_font_only_writes_requested_fields() {
+        let rec = button_component_record(603, 410, 56, 70, 0x1111, 0x2222, 3);
+        let mut data = rec;
+        patch_button_color_font(&mut data, 0, Some(0x9999), None, None).unwrap();
+
+        let bco = u16::from_le_bytes([
+            data[button_record_offset::BCO],
+            data[button_record_offset::BCO + 1],
+        ]);
+        let bco2 = u16::from_le_bytes([
+            data[button_record_offset::BCO2],
+            data[button_record_offset::BCO2 + 1],
+        ]);
+        assert_eq!(bco, 0x9999);
+        assert_eq!(bco2, 0x2222, "untouched field must be left alone");
+        assert_eq!(
+            data[button_record_offset::FONT],
+            3,
+            "untouched field must be left alone"
+        );
+    }
+
+    #[test]
+    fn patch_button_color_font_errors_past_end_of_file() {
+        let mut data = vec![0u8; 10];
+        assert!(patch_button_color_font(&mut data, 5, Some(1), None, None).is_err());
     }
 
     #[test]
