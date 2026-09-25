@@ -188,9 +188,16 @@ all three from a YAML spec. All have been run against the real reference
   the way `t`/`b` do, or are encoded some other way (since they render
   nothing), hasn't been checked. This toolkit doesn't patch `m`
   components in any way.
-- Font/image resource encoding (not investigated — irrelevant if you're
-  only repositioning/retexting components that already reference fonts
-  that exist in the file). This toolkit never touches font/image data.
+- Font resource encoding: now partially investigated — see
+  [nextion-zi-font-format.md](nextion-zi-font-format.md). Each compiled
+  font's block (header, name string, glyph table) can be located and
+  identified inside a `.tft` by name, but the glyph raster/vector
+  encoding itself and the font-id → block-offset directory are both
+  still unknown. This toolkit never touches font data.
+- Image/picture resource encoding — not investigated at all (irrelevant
+  if you're only repositioning/retexting components that already
+  reference pictures that exist in the file). This toolkit never touches
+  image data.
 
 ## 6. Recommended strategy given "one hardware target only"
 

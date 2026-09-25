@@ -30,7 +30,8 @@ components:
     h: 60
     txt: "ON!"                # optional -- omit to leave unchanged
     pco: 0x049f               # optional, RGB565 text color -- 't' components only
-    bco: 0x0640               # optional, RGB565 background color -- 'b' components only
+    bco: 0x0640               # optional, RGB565 background color (normal) -- 'b' components only
+    bco2: 0x0400              # optional, RGB565 background color (pressed) -- 'b' components only
     font: 5                   # optional, font id already present in the scaffold
 ```
 
@@ -62,28 +63,32 @@ either fail to find a component's geometry or, worse, patch the wrong one.
 | `type` | string (`t`/`b`/`m`), optional | ignored by `compile` (read from the scaffold `.HMI` instead); used by `render-html` to choose styling and text-vs-objname labeling, since it has no scaffold to read type from |
 | `x`, `y`, `w`, `h` | integer, optional | if any differs from the scaffold's current value, `tft::patch_geom` rewrites the whole quad plus `endx`/`endy` |
 | `txt` | string, optional | if it differs from the scaffold's current text, `tft::patch_text` rewrites the text-pool slot; must not be longer than the scaffold's current text (see the format doc's slot-size caveat) |
-| `pco` | integer (RGB565), optional | **only valid when the scaffold's `type` for this component is `t`** — see below |
-| `bco` | integer (RGB565), optional | background color, normal state — **only valid when the scaffold's `type` for this component is `b`** |
-| `font` | integer (font id), optional | same restriction as `pco`/`bco` depending on type; refers to a font id already compiled into the scaffold, never new font data |
+| `pco` | integer (RGB565), optional | text color, `t` components only — see below |
+| `bco` | integer (RGB565), optional | background color, normal state, `b` components only |
+| `bco2` | integer (RGB565), optional | background color, pressed state, `b` components only |
+| `font` | integer (font id), optional | valid on both `t` and `b`; refers to a font id already compiled into the scaffold, never new font data |
 
 ## Limitations (read before relying on this)
 
 - **Color/font patching is restricted by confirmed record layout, per
-  type.** `pco`/`font` require the scaffold's `type` to be `t`; `bco`/
-  `font` require `type` to be `b`. Setting a color/font field on the
-  wrong type (or on `m`, which has no compiled color/font record at all
-  — see `docs/formats/nextion-hmi-format.md` §3.2) makes `compile` refuse
-  with `SpecError::ColorFontUnsupportedForType` rather than guessing at
-  offsets that might belong to a different field on that component type.
-  `bco2`/`pco2` (pressed-state colors) have no patch path yet — see
-  `docs/formats/nextion-tft-format.md` §2b for what's still unconfirmed.
+  type.** `pco` requires the scaffold's `type` to be `t`; `bco`/`bco2`
+  require `type` to be `b`; `font` is confirmed for both. Setting a
+  color field on the wrong type (or on `m`, which has no compiled
+  color/font record at all — see `docs/formats/nextion-hmi-format.md`
+  §3.2) makes `compile` refuse with `SpecError::ColorFontUnsupportedForType`
+  rather than guessing at offsets that might belong to a different field
+  on that component type. `pco2` (button pressed-state text color) and
+  `pic`/`pic2` (either type) have no patch path — see
+  `docs/formats/nextion-tft-format.md` §2b for what's still unconfirmed
+  there.
 - **`txt`/`x`/`y`/`w`/`h` work on any component type** — these use
   pattern search (`tft::patch_text`/`patch_geom`), which doesn't need to
   know the record layout at all.
 - **No font/image data.** `font` only changes which already-compiled font
   *id* a component references — this toolkit has no font compiler and
   never will until someone reverse-engineers the `.zi` font-blob format
-  (see the `.HMI` format doc §2).
+  (see [`docs/formats/nextion-zi-font-format.md`](formats/nextion-zi-font-format.md)
+  for what's understood so far and exactly where that stops).
 - **No structural changes.** Components aren't added, removed, or
   reordered. A spec can't introduce a new `objname` that isn't already in
   the scaffold.

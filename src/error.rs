@@ -118,11 +118,13 @@ pub enum SpecError {
     ComponentNotInScaffold { objname: String },
 
     #[error(
-        "spec component {objname:?} requests a color/font change, but its scaffold type is {component_type:?} (not 't'); \
-         the compiled-record layout for non-text components hasn't been reverse-engineered, so this can't be done safely"
+        "spec component {objname:?} sets {field}, which requires a scaffold type this toolkit \
+         doesn't have a confirmed record layout for on type {component_type:?} \
+         (pco/font need 't', bco/bco2 need 'b') -- see docs/formats/nextion-tft-format.md §2/§2b"
     )]
     ColorFontUnsupportedForType {
         objname: String,
+        field: String,
         component_type: String,
     },
 

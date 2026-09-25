@@ -20,7 +20,10 @@ section before filing an issue that this doesn't do X.
 - **No font or image pipeline.** Fonts and pictures are read/referenced
   by id, never generated or re-encoded. `compile` can point a component
   at a font id that's already compiled into your scaffold; it can't add
-  a new font.
+  a new font. See [`docs/formats/nextion-zi-font-format.md`](docs/formats/nextion-zi-font-format.md)
+  for what's understood about the compiled `.zi` font format (enough to
+  locate/identify a font, not to decode or add one) and
+  [`examples/fonts/`](examples/fonts/) for real reference `.zi` files.
 - **A subset of controls.** The compiled record layout is confirmed for
   text-type (`t`) and button-type (`b`) components; text and geometry
   patching work on any component type (they search for byte patterns

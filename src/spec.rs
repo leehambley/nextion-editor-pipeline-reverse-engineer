@@ -43,9 +43,10 @@ pub struct ComponentSpec {
     pub txt: Option<String>,
     /// Text color (RGB565), e.g. `0xffff` for white.
     pub pco: Option<u16>,
-    /// Background color (RGB565), normal state. See `type`'s doc comment --
-    /// same "not used by `compile`, used by `html`" caveat applies.
+    /// Background color (RGB565), normal state -- `b` components only.
     pub bco: Option<u16>,
+    /// Background color (RGB565), pressed state -- `b` components only.
+    pub bco2: Option<u16>,
     pub font: Option<u8>,
 }
 
@@ -210,28 +211,82 @@ pub fn compile(
             });
         }
 
-        if comp.pco.is_some() || comp.font.is_some() {
-            if current.component_type != "t" {
-                return Err(SpecError::ColorFontUnsupportedForType {
-                    objname: comp.objname.clone(),
-                    component_type: current.component_type.clone(),
-                });
-            }
+        if comp.pco.is_some() && current.component_type != "t" {
+            return Err(SpecError::ColorFontUnsupportedForType {
+                objname: comp.objname.clone(),
+                field: "pco".to_string(),
+                component_type: current.component_type.clone(),
+            });
+        }
+        if (comp.bco.is_some() || comp.bco2.is_some()) && current.component_type != "b" {
+            return Err(SpecError::ColorFontUnsupportedForType {
+                objname: comp.objname.clone(),
+                field: "bco/bco2".to_string(),
+                component_type: current.component_type.clone(),
+            });
+        }
+
+        if comp.pco.is_some() || comp.bco.is_some() || comp.bco2.is_some() || comp.font.is_some() {
             // Locate the record using the *post-geometry-patch* quad, since
-            // patch_geom (if it ran above) already rewrote those bytes.
+            // patch_geom (if it ran above) already rewrote those bytes. Both
+            // record layouts put x,y,w,h at the same offset (see tft.rs), so
+            // either find_*_record_by_geometry call is equivalent here.
             let record_start = tft::find_text_record_by_geometry(
                 scaffold_tft_data,
                 (target_x, target_y, target_w, target_h),
             )?;
-            tft::patch_component_color_font(scaffold_tft_data, record_start, comp.pco, comp.font)?;
-            if let Some(pco) = comp.pco {
-                changes.push(AppliedChange {
-                    objname: comp.objname.clone(),
-                    field: "pco".to_string(),
-                    from: "?".to_string(),
-                    to: format!("{pco:#06x}"),
-                });
+
+            match current.component_type.as_str() {
+                "t" => {
+                    tft::patch_component_color_font(
+                        scaffold_tft_data,
+                        record_start,
+                        comp.pco,
+                        comp.font,
+                    )?;
+                    if let Some(pco) = comp.pco {
+                        changes.push(AppliedChange {
+                            objname: comp.objname.clone(),
+                            field: "pco".to_string(),
+                            from: "?".to_string(),
+                            to: format!("{pco:#06x}"),
+                        });
+                    }
+                }
+                "b" => {
+                    tft::patch_button_color_font(
+                        scaffold_tft_data,
+                        record_start,
+                        comp.bco,
+                        comp.bco2,
+                        comp.font,
+                    )?;
+                    if let Some(bco) = comp.bco {
+                        changes.push(AppliedChange {
+                            objname: comp.objname.clone(),
+                            field: "bco".to_string(),
+                            from: "?".to_string(),
+                            to: format!("{bco:#06x}"),
+                        });
+                    }
+                    if let Some(bco2) = comp.bco2 {
+                        changes.push(AppliedChange {
+                            objname: comp.objname.clone(),
+                            field: "bco2".to_string(),
+                            from: "?".to_string(),
+                            to: format!("{bco2:#06x}"),
+                        });
+                    }
+                }
+                other => {
+                    return Err(SpecError::ColorFontUnsupportedForType {
+                        objname: comp.objname.clone(),
+                        field: "font".to_string(),
+                        component_type: other.to_string(),
+                    });
+                }
             }
+
             if let Some(font) = comp.font {
                 changes.push(AppliedChange {
                     objname: comp.objname.clone(),
@@ -434,6 +489,60 @@ mod tests {
                 txt: None,
                 pco: Some(0x049f),
                 font: None,
+                ..Default::default()
+            }],
+        };
+
+        let err = compile(&spec, &scaffold, &mut tft_data, Target::Nx8048p050011rY).unwrap_err();
+        assert!(matches!(err, SpecError::ColorFontUnsupportedForType { .. }));
+    }
+
+    #[test]
+    fn compile_patches_button_bco_bco2_and_font() {
+        let mut scaffold = make_scaffold();
+        scaffold.pages[0].components[0].attrs[0] =
+            make_attr("type", AttrValue::Str("b".to_string()));
+        let mut tft_data = make_tft_bytes();
+        let spec = UiSpec {
+            target: "NX8048P050-011R-Y".to_string(),
+            page: "page1".to_string(),
+            components: vec![ComponentSpec {
+                objname: "textGear".to_string(),
+                bco: Some(0xf800),
+                bco2: Some(0x0c80),
+                font: Some(1),
+                ..Default::default()
+            }],
+        };
+
+        let changes = compile(&spec, &scaffold, &mut tft_data, Target::Nx8048p050011rY).unwrap();
+        assert_eq!(changes.len(), 3); // bco, bco2, font
+
+        use tft::button_record_offset as o;
+        let rec_start = tft::HEADER_LEN;
+        let bco = u16::from_le_bytes([
+            tft_data[rec_start + o::BCO],
+            tft_data[rec_start + o::BCO + 1],
+        ]);
+        let bco2 = u16::from_le_bytes([
+            tft_data[rec_start + o::BCO2],
+            tft_data[rec_start + o::BCO2 + 1],
+        ]);
+        assert_eq!(bco, 0xf800);
+        assert_eq!(bco2, 0x0c80);
+        assert_eq!(tft_data[rec_start + o::FONT], 1);
+    }
+
+    #[test]
+    fn compile_refuses_bco_on_text_component() {
+        let scaffold = make_scaffold(); // textGear's scaffold type is "t"
+        let mut tft_data = make_tft_bytes();
+        let spec = UiSpec {
+            target: "NX8048P050-011R-Y".to_string(),
+            page: "page1".to_string(),
+            components: vec![ComponentSpec {
+                objname: "textGear".to_string(),
+                bco: Some(0xf800),
                 ..Default::default()
             }],
         };
