@@ -68,10 +68,10 @@ record start:
 | `+0x2E` | `txt_maxl` | 2 | matches `.HMI` |
 | `+0x30` | **text-pool pointer** | 2 | see §3 — a `u16` byte offset, not the text itself |
 | `+0x32–0x3B` | reserved | 10 | `0x00` |
-| `+0x3C` | `0x74` | 1 | constant marker |
+| `+0x3C` | `0x74` | 1 | constant on text records specifically — **not type-agnostic, see §2b** |
 | `+0x3D` | per-component index | 1 | increments per component (roughly `id+1`) |
 | `+0x3E` | `0x01` | 1 | constant |
-| `+0x3F` | `0x37` | 1 | constant — possibly a component-type tag, only one type sampled so far |
+| `+0x3F` | `0x37` | 1 | constant on text records specifically — **not type-agnostic, see §2b** |
 
 Exposed in code as [`tft::text_record_offset`](../../src/tft.rs) and
 `tft::TEXT_RECORD_LEN`. This toolkit only ever writes to `+0x28` (`pco`)
@@ -79,15 +79,46 @@ and `+0x25` (`font`) via [`tft::patch_component_color_font`](../../src/tft.rs)
 — every other field in this table is read-only knowledge, not something
 the toolkit patches by offset.
 
-**Not yet done:** the equivalent record for a *button* type component
-(will have paired normal/pressed fields — `bco`/`bco2`, `pco`/`pco2`,
-`pic`/`pic2` — that text labels don't need). Same diffing technique
-should crack it quickly; just needs picking two sibling buttons and
-repeating this section's method. **Because this is unknown, the toolkit
-refuses to patch color/font on any component whose `.HMI` `type` isn't
-`t`** (see [`SpecError::ColorFontUnsupportedForType`](../../src/error.rs)) —
-writing to these offsets on a button record would silently corrupt
-whatever button-specific field actually lives there.
+## 2b. Button (`type: b`) component record **[confirmed for bco/bco2/font/geometry only]**
+
+Same 84-byte record size as §2, found the same way (search for the known
+`x,y,w,h` quad, record start = quad offset − 0x10). Confirmed against 9
+real button instances (`bD0`..`bD9`, `bX`/`bY`/`bZ`, `bStatus`) spanning 4
+distinct background colors and 3 distinct font ids — not just one diffed
+pair, specifically to rule out coincidental matches:
+
+| offset | field | width | notes |
+|---|---|---|---|
+| `+0x00–0x01` | unique tag | 2 | differs per component, same role as §2 |
+| `+0x04–0x05` | sequential per-record counter | 2 | increases monotonically in file order across records — **not** color/font-related, despite being in the "reserved" range §2 assumed was `0x00` for text records. **[confirmed distinct from §2's assumption — flag: §2's "reserved" claim for this range was never tested against a second component type until now]** |
+| `+0x10–0x1B` | `x,y,w,h,endx,endy` | 2 each | matches `.HMI` exactly, same offsets as §2 |
+| `+0x25` | `font` | 1 | matches `.HMI`, same offset as §2 |
+| `+0x26–0x27` | **`bco`** (background, normal state, RGB565) | 2 | confirmed against 4 distinct real values (`0x0000`, `0xf800`, `0x0c80`, `0x02df`) — exact LE match every time |
+| `+0x28–0x29` | **`bco2`** (background, pressed state, RGB565) | 2 | all 9 samples happened to share the same `bco2` value (`0xce79`) — confirmed present at this offset and matching, but not independently distinguished from a hypothetical neighboring field since no sample varied it |
+| `+0x2A–0x2D` | `pco`/`pco2` region | 4 | present, but every sample had `pco == pco2`, so the two 2-byte halves could not be independently confirmed — **[hypothesis only, do not patch]** |
+| `+0x2E–0x2F` | `0x01 0x01` | 2 | constant on every button sample; candidate `xcen`/`ycen` (both `1` in `.HMI` on every sample) — **[hypothesis]** |
+| `+0x30–0x31` | candidate text-pool pointer | 2 | present and plausible by analogy to §2/§3, but not independently verified against the button-label text pool the way §3 did for text — **[hypothesis]** |
+| `+0x34–0x35` | varies per record, ~12-byte stride | 2 | candidate second, smaller text-pool table (button labels are short, e.g. single digits) — **[hypothesis, not verified]** |
+| `+0x3C` | **varies** (`0x62`/`0x74`/`0x6d` seen) | 1 | **contradicts §2's assumption that this offset is a fixed constant** — that assumption was only ever tested against text (`t`) records; for buttons it's not constant. Correlates loosely with `+0x3D`, may actually be the low byte of a 2-byte LE value spanning `+0x3C–0x3D` rather than a separate marker+index pair — unresolved |
+| `+0x3D` | per-component index | 1 | same role as §2 |
+| `+0x3E` | `0x01` | 1 | constant, matches §2 |
+| `+0x3F` | `0x37` | 1 | constant, matches §2 — this byte *is* type-agnostic (§2's speculation that it might be a type tag is contradicted: both `t` and `b` records share it) |
+
+**Not resolved:** exact `pco`/`pco2` split, `pic`/`pic2` location (no
+sample had a non-sentinel picture value — every button checked had
+`pic == pic2 == 0xffff`, the "no picture" sentinel), and the true
+role of `+0x30–0x31`/`+0x34–0x35`. **Do not patch any of these** — only
+`bco`, `bco2`, `font`, and geometry are confirmed safe to write.
+
+One button, `bMode` (a picture-styled button, `.HMI` `style: 4`), could
+not be found in the `.tft` at all by its `.HMI` `x,y,w,h` — it likely
+renders through a different record shape tied to its picture styling.
+Flagged as unexplained; doesn't affect the solid-color buttons above.
+
+Exposed in code as `tft::button_record_offset`, with a corresponding
+[`tft::patch_button_color_font`](../../src/tft.rs) that only ever writes
+`bco`/`bco2`/`font` — mirroring [`tft::patch_component_color_font`](../../src/tft.rs)'s
+restriction to confirmed fields for text records.
 
 ## 3. Text pool **[confirmed]**
 
@@ -143,8 +174,20 @@ all three from a YAML spec. All have been run against the real reference
 - How a page's component list is enumerated/counted (needed to **add or
   remove** a component — same class of problem as the `.HMI` directory,
   just not yet investigated for `.tft`). This toolkit never adds or
-  removes components.
-- The button-type record layout (§2's "not yet done").
+  removes components. This is also the blocker for compiling a UI spec
+  directly into a `.tft` with no Editor-built scaffold at all — see
+  [targets.md](../targets.md) for the current status of that effort.
+- The button-type record layout is now confirmed for `bco`/`bco2`/`font`/
+  geometry (§2b) but **not** for `pco`/`pco2`, `pic`/`pic2`, or the
+  candidate text-pool-pointer fields at `+0x30`/`+0x34`.
+- The **compiled record layout for `type: m` (Hotspot) components is
+  entirely unexplored** — see [nextion-hmi-format.md](nextion-hmi-format.md)
+  §3.1 for what's known about `m` in the `.HMI` project format (very
+  likely an invisible touch-only region with no visual attributes at
+  all). Whether `m` components even have a `.tft` geometry/color record
+  the way `t`/`b` do, or are encoded some other way (since they render
+  nothing), hasn't been checked. This toolkit doesn't patch `m`
+  components in any way.
 - Font/image resource encoding (not investigated — irrelevant if you're
   only repositioning/retexting components that already reference fonts
   that exist in the file). This toolkit never touches font/image data.
@@ -169,3 +212,13 @@ Don't try to synthesize a `.tft` from nothing. Instead:
 This sidesteps both open problems (`.HMI` directory bookkeeping and
 `.tft` component enumeration) entirely, at the cost of one manual Editor
 session instead of zero.
+
+**If a scaffold genuinely isn't an option** (no Nextion Editor access at
+all), the only path to a working UI is reverse-engineering the page/
+component-enumeration bookkeeping this section sidesteps — see
+[targets.md](../targets.md) for the current status of that effort and
+its validation method. On the NX8048P050-011R-Y, a `.tft` is flashed by
+placing it as the *only* file on a FAT-formatted microSD card and power-
+cycling the display — no serial/UART tooling required for this — which
+makes "does this synthesized `.tft` actually boot" a fast, repeatable
+check once that work is underway.

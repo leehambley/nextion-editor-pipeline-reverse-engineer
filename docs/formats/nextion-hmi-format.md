@@ -129,7 +129,7 @@ Universal (present on every component seen):
 
 | name | meaning | type |
 |---|---|---|
-| `type` | component class, stored as a **single ASCII letter** (`t`=text, `b`=button, `p`=picture/page, `y`=page container) | string |
+| `type` | component class, stored as a **single ASCII letter** (`t`=text, `b`=button, `p`=picture/page, `y`=page container, `m`=**[hypothesis]** hotspot — see below) | string |
 | `id` | component id — **this is the number your firmware's touch handler receives** | int |
 | `objname` | the component's name as shown in the Editor (`bOff`, `textGear`, …) | string |
 | `vscope` | visibility scope (0/1 seen) | int |
@@ -164,7 +164,73 @@ Seen on text-like and button components (present when relevant):
 | `key` | keyboard-popup id |
 | `val` | numeric value (sliders, progress bars, checkboxes) |
 
-### 3.2 Caveat: large binary values break naive scanning
+### 3.2 Component type `m` — likely a Hotspot **[hypothesis]**
+
+127 components in the reference project have `type: m`. Unlike every
+other type, they carry **no visual attributes at all** — no `sta`, `bco`,
+`pco`, `font`, `pic`, or `txt` — in 118 of the 127 samples checked; the
+attribute list simply stops after the universal set (§3.1) plus
+`groupid0`/`groupid1`. Objnames follow a `modeX`/`touchFace`-style
+pattern (`modeGears`, `modeTurn`, `touchFace`, `modeCone`, ...), and
+`sendkey` is `2` on nearly every sample, versus `0` on most `t`
+components.
+
+This is consistent with a Nextion **Hotspot** — an invisible touch-only
+region with no rendering properties, used to place a touch zone over
+background graphics without a visible widget on top. No Nextion-official
+documentation was consulted to confirm this; it's inferred purely from
+the structural evidence above, so treat it as **[hypothesis]**, not
+confirmed. This toolkit does not patch `m` components in any way — there
+are no visual attributes to patch, and their behavior semantics (what a
+touch on one actually does) aren't understood either.
+
+The remaining 9 of 127 samples show extra, inconsistent attributes —
+these are the naive-scanner blob-swallowing artifact described in §3.4
+below, not evidence about `m`'s own structure.
+
+### 3.3 The per-component trailer
+
+Investigating why `m` components' `groupid1` sometimes decodes with
+extra embedded text (`codesdown-0`, `codesup-0`, `att-42`, ...) revealed
+that this is **not** part of `groupid1`, and **not** specific to type
+`m` — it's a length-prefixed chain that follows the *last* named
+attribute of every component, of every type. `groupid0` alone confirms
+where `groupid1`'s own 4-byte int value actually ends (a clean
+`00000000` + type byte `0x12` + 3-byte pad, exactly matching §3's
+generic record shape) — everything after that pad is a separate
+sequence of `<u32 length><ascii bytes>` segments, repeated 3–5 times,
+that stops exactly where the next component's `type` record begins:
+
+```
+<len:u32><ascii "codesdown-N">
+<len:u32><ascii "codesup-N">
+<len:u32>                      (sometimes empty, len=0)
+<len:u32><ascii "att-N">
+```
+
+The same chain appears after `t` and `b` components' `spay` attribute,
+after `y` (page container) and `p` (picture) components too — it is a
+**universal per-component trailer**, not an attribute value. The `N`
+suffixes look like references into the per-page/per-project event-script
+table (`codesdown`/`codesup` read naturally as "code, [touch] down" /
+"code, [touch] up" — i.e. which compiled event-handler script index runs
+on press/release — and `att` plausibly an attachment or attribute-block
+count).
+
+This toolkit's [`decode`](../../src/hmi.rs) currently folds this trailer
+into whichever named attribute happens to precede it (`groupid1` for
+`m`, `spay` for `t`/`b`) rather than parsing it separately — the value
+you see for that attribute in decoded YAML is not really that
+attribute's value, it's that attribute's real (short) value followed by
+this unrelated trailer glued on by the naive "next 16-byte name pattern"
+scan. This is a decoder accuracy gap, not a corruption risk (the toolkit
+never writes to a value it decoded this way), and is tracked as a
+follow-up: parsing the trailer chain explicitly would let every
+component's *true* last named attribute be decoded correctly, letting
+`m` in particular decode down to exactly its confirmed attribute set with
+nothing swallowed onto the end.
+
+### 3.4 Caveat: large binary values break naive scanning
 
 Some attribute values are raw binary blobs (embedded PNGs for pictures,
 compressed font data) that are **many kilobytes long and contain no

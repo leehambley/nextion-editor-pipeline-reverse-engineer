@@ -68,3 +68,24 @@ compiled for a different resolution.
    findings with the same **[confirmed]**/**[hypothesis]** rigor as the
    first one — resist the temptation to mark something confirmed just
    because it matched on one file.
+
+## A separate, harder goal: compiling without the Nextion Editor at all
+
+The above is about adding a *second target* to a toolkit that still
+relies on a scaffold `.HMI`/`.tft` pair built once in the real Nextion
+Editor (see `docs/formats/nextion-tft-format.md` §6). A different, harder
+goal — going straight from a textual UI spec to a flashable `.tft` with
+**zero** dependency on the Editor, for the one target already supported
+— requires reverse-engineering the page/component-count bookkeeping that
+`nextion-tft-format.md` §5 documents as still unknown. That's a distinct
+effort from anything in this document and is tracked separately; it does
+not block or get blocked by adding a second `Target` variant.
+
+**Validation method for that effort**: the NX8048P050-011R-Y flashes a
+`.tft` from a FAT-formatted microSD card — place the file as the *only*
+file on the card and power-cycle the display. No serial/UART tooling is
+needed for this (a UART flashing path also exists on this display but
+isn't required). This makes "does this hypothesized/synthesized `.tft`
+actually boot" a fast, repeatable check for whoever picks up that work,
+much cheaper than it might first appear given how much of the format is
+still unconfirmed at the container level.
