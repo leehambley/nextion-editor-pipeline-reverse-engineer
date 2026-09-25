@@ -1,0 +1,29 @@
+[package]
+name = "nextion-tft-toolkit"
+version = "0.1.0"
+edition = "2021"
+description = "Decode and patch Nextion .HMI project files and .tft compiled firmware, for the NX8048P050-011R-Y display only"
+license = "MIT"
+repository = "https://github.com/moia-playground/nextion-tft-toolkit"
+readme = "README.md"
+keywords = ["nextion", "hmi", "tft", "embedded", "display"]
+categories = ["command-line-utilities", "encoding"]
+
+[[bin]]
+name = "nxtft"
+path = "src/main.rs"
+
+[lib]
+name = "nextion_tft_toolkit"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+thiserror = "1"
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"

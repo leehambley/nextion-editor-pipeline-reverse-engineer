@@ -1,0 +1,224 @@
+# Draft DSL for the *new* page 0 — the contract between this reverse-
+# engineering session and your Claude Code firmware session.
+#
+# `id` values below are copied directly from nextion.rs's `key_for()` /
+# the doc comment above it ("Component ids on page 0 of the HMI ... See
+# docs/nextion.md") -- so whatever we generate from this file will line
+# up with the firmware's touch-event → Key mapping with zero renumbering
+# on either side. If the firmware's id list changes, update it here too
+# and this stays the single source of truth for both sessions.
+#
+# x/y/w/h are placeholders (TODO) -- fill in from your actual layout, or
+# tell me the screen size + rough grid and I'll propose a layout.
+#
+# type: t=text/label, b=button, y=page container (reserved, don't use)
+
+page: page0
+w: 800
+h: 480
+
+components:
+  # -- status / mode --
+  - objname: bStatus     # also serves as bOff -- see note
+    type: b
+    id: 3
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "OFF"
+    note: "id 3 is shared by bStatus and bOff in the firmware match arm (3 | 23 => Disengage)"
+
+  - objname: bOn
+    type: b
+    id: 25
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "ON"
+
+  - objname: bReverse
+    type: b
+    id: 5
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "REV"
+
+  - objname: bMeasure
+    type: b
+    id: 6
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "mm/in"
+
+  - objname: bStep
+    type: b
+    id: 7
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "STEP"
+    note: "tStepVal (same id 7) implies a paired label component -- confirm with firmware side whether that's a second component or this button's own txt"
+
+  - objname: bZ0
+    type: b
+    id: 21
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "Z0"
+
+  # -- turns/angle readouts (shared zero action) --
+  - objname: tTurns
+    type: t
+    id: 9
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "0"
+
+  - objname: tAngle
+    type: t
+    id: 10
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "0.0"
+
+  # -- keypad: digits 0-9 map to component ids 26-35 in order --
+  - {objname: bDigit0, type: b, id: 26, x: TODO, y: TODO, w: TODO, h: TODO, txt: "0"}
+  - {objname: bDigit1, type: b, id: 27, x: TODO, y: TODO, w: TODO, h: TODO, txt: "1"}
+  - {objname: bDigit2, type: b, id: 28, x: TODO, y: TODO, w: TODO, h: TODO, txt: "2"}
+  - {objname: bDigit3, type: b, id: 29, x: TODO, y: TODO, w: TODO, h: TODO, txt: "3"}
+  - {objname: bDigit4, type: b, id: 30, x: TODO, y: TODO, w: TODO, h: TODO, txt: "4"}
+  - {objname: bDigit5, type: b, id: 31, x: TODO, y: TODO, w: TODO, h: TODO, txt: "5"}
+  - {objname: bDigit6, type: b, id: 32, x: TODO, y: TODO, w: TODO, h: TODO, txt: "6"}
+  - {objname: bDigit7, type: b, id: 33, x: TODO, y: TODO, w: TODO, h: TODO, txt: "7"}
+  - {objname: bDigit8, type: b, id: 34, x: TODO, y: TODO, w: TODO, h: TODO, txt: "8"}
+  - {objname: bDigit9, type: b, id: 35, x: TODO, y: TODO, w: TODO, h: TODO, txt: "9"}
+
+  - objname: bBackspace
+    type: b
+    id: 24
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "<-"
+
+  - objname: bPoint
+    type: b
+    id: 52
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "."
+
+  - objname: bEnter
+    type: b
+    id: 51
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "OK"
+
+  - objname: bPlus
+    type: b
+    id: 42
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "+"
+
+  - objname: bMinus
+    type: b
+    id: 43
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "-"
+
+  # -- stop / jog --
+  - objname: bStopLeft
+    type: b
+    id: 40
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "STOP <"
+
+  - objname: bStopRight
+    type: b
+    id: 41
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "STOP >"
+
+  - objname: bJogLeft
+    type: b
+    id: 48
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "JOG <"
+    note: "needs press+release events (firmware special-cases id 48/49 before the pressed-only filter)"
+
+  - objname: bJogRight
+    type: b
+    id: 49
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "JOG >"
+    note: "see bJogLeft"
+
+  - objname: bJogCycle
+    type: b
+    id: 58
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "JOG MODE"
+
+  # -- step size selector: 5 buttons, ids 53-57 --
+  - {objname: bStepSize0, type: b, id: 53, x: TODO, y: TODO, w: TODO, h: TODO, txt: "TODO"}
+  - {objname: bStepSize1, type: b, id: 54, x: TODO, y: TODO, w: TODO, h: TODO, txt: "TODO"}
+  - {objname: bStepSize2, type: b, id: 55, x: TODO, y: TODO, w: TODO, h: TODO, txt: "TODO"}
+  - {objname: bStepSize3, type: b, id: 56, x: TODO, y: TODO, w: TODO, h: TODO, txt: "TODO"}
+  - {objname: bStepSize4, type: b, id: 57, x: TODO, y: TODO, w: TODO, h: TODO, txt: "TODO"}
+
+  - objname: bSetup
+    type: b
+    id: 59
+    x: TODO
+    y: TODO
+    w: TODO
+    h: TODO
+    txt: "SETUP"
+
+# Ids intentionally NOT re-derivable from the Rust file and worth
+# double-checking with the firmware session before we generate anything:
+#   - id 23 (bOff) -- shares the Disengage action with id 3 (bStatus).
+#     Are these really two different on-screen buttons with the same
+#     *behavior*, or is 23 legacy/unused? The doc comment "existing
+#     NanoEls H5 ids kept where unchanged" suggests 23 might be a
+#     leftover from the current h5.HMI rather than a new-UI component.

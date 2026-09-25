@@ -1,0 +1,77 @@
+# Worked example for `nxtft compile`, adapted from the original
+# reverse-engineering session's draft DSL (inputs-from-claude/future_ui_page0.yaml).
+#
+# This is NOT something you can run as-is: `compile` requires a scaffold
+# .HMI/.tft pair (see docs/formats/nextion-tft-format.md section 6 and
+# docs/spec-format.md) built in the real Nextion Editor with a component
+# named e.g. "bOff" already present. This file shows the *shape* of a spec
+# once that scaffold exists -- geometry values below are illustrative
+# placeholders, not a real layout.
+#
+# The original draft kept firmware touch-ids (`id: 3`, `id: 25`, ...) as
+# comments so the scaffold built in the Editor lines up with the
+# firmware's touch-event -> action mapping with zero renumbering on either
+# side. This toolkit's compile pipeline doesn't need `id` at all -- it
+# resolves components by `objname` against the scaffold's own .HMI -- but
+# the ids are kept here as comments since they're the reason each
+# component needs to exist in the scaffold with that exact name.
+
+target: NX8048P050-011R-Y
+page: page0
+
+components:
+  # -- status / mode --
+  - objname: bStatus   # firmware id 3, shared with bOff (3 | 23 => Disengage)
+    x: 0
+    y: 0
+    w: 100
+    h: 50
+    txt: "OFF"
+
+  - objname: bOn        # firmware id 25
+    x: 100
+    y: 0
+    w: 100
+    h: 50
+    txt: "ON"
+
+  - objname: bReverse    # firmware id 5
+    x: 200
+    y: 0
+    w: 100
+    h: 50
+    txt: "REV"
+
+  - objname: bMeasure    # firmware id 6
+    x: 300
+    y: 0
+    w: 100
+    h: 50
+    txt: "mm/in"
+
+  # -- turns/angle readouts --
+  - objname: tTurns       # firmware id 9
+    x: 0
+    y: 60
+    w: 200
+    h: 60
+    txt: "0"
+    pco: 0xffff  # 't' component -- color/font patching is supported here
+    font: 2
+
+  - objname: tAngle       # firmware id 10
+    x: 200
+    y: 60
+    w: 200
+    h: 60
+    txt: "0.0"
+    pco: 0xffff
+    font: 2
+
+  # -- keypad digit 0, as a pattern for the rest (ids 26-35 for 0-9) --
+  - objname: bDigit0      # firmware id 26
+    x: 0
+    y: 130
+    w: 80
+    h: 60
+    txt: "0"

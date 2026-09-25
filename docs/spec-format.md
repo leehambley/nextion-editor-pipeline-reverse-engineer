@@ -1,0 +1,87 @@
+# UI spec format (`compile` input)
+
+`nxtft compile` patches a **scaffold** `.tft` (see
+[`docs/formats/nextion-tft-format.md`](formats/nextion-tft-format.md) §6
+for what a scaffold is and why this toolkit doesn't synthesize a `.tft`
+from nothing) so it matches a YAML spec describing the *desired* state of
+each named component. It never adds, removes, or renames components —
+only text, geometry, and (for text-type components only) color/font.
+
+## Top-level shape
+
+```yaml
+target: NX8048P050-011R-Y   # must match docs/targets.md's one supported target
+page: page1                  # documentation only today -- see "Limitations" below
+components:
+  - objname: textGear         # must exist in the scaffold .HMI, same spelling
+    x: 90                     # optional -- omit to leave unchanged
+    y: 22
+    w: 180
+    h: 60
+    txt: "ON!"                # optional -- omit to leave unchanged
+    pco: 0x049f               # optional, RGB565 text color -- 't' components only
+    font: 5                   # optional, font id already present in the scaffold
+```
+
+Every field except `objname` is optional. `compile` diffs each field
+against the scaffold's current value (read from the scaffold `.HMI`, not
+the `.tft` — see below) and only writes bytes for fields that actually
+changed; an unset field is left exactly as the scaffold had it.
+
+## Why `compile` needs both a scaffold `.HMI` and a scaffold `.tft`
+
+`.tft` doesn't carry `objname` (see the format doc) — there's no way to
+look up "the component named `textGear`" in a compiled file directly.
+`compile` resolves that by decoding the scaffold's own `.HMI` (which still
+has `objname`s) to find each spec component's *current* type, geometry,
+and text, then locates the matching record in the scaffold `.tft` by
+searching for that current geometry — exactly the manual workflow
+`nextion-tft-format.md` §6 describes, automated.
+
+This means the scaffold `.HMI` and scaffold `.tft` **must be the exact
+same compiled project** — a `.tft` compiled from a different `.HMI` (even
+a very similar one) will have different byte content, and `compile` will
+either fail to find a component's geometry or, worse, patch the wrong one.
+
+## Fields
+
+| field | type | effect |
+|---|---|---|
+| `objname` | string, required | looked up in the scaffold `.HMI`; error if absent |
+| `x`, `y`, `w`, `h` | integer, optional | if any differs from the scaffold's current value, `tft::patch_geom` rewrites the whole quad plus `endx`/`endy` |
+| `txt` | string, optional | if it differs from the scaffold's current text, `tft::patch_text` rewrites the text-pool slot; must not be longer than the scaffold's current text (see the format doc's slot-size caveat) |
+| `pco` | integer (RGB565), optional | **only valid when the scaffold's `type` for this component is `t`** — see below |
+| `font` | integer (font id), optional | same restriction as `pco`; refers to a font id already compiled into the scaffold, never new font data |
+
+## Limitations (read before relying on this)
+
+- **Text-type components only for `pco`/`font`.** The compiled record
+  layout is only confirmed for `type: t` (label) components. If a spec
+  entry sets `pco` or `font` on a component whose scaffold type is
+  anything else (e.g. `b` for button), `compile` refuses with
+  `SpecError::ColorFontUnsupportedForType` rather than guessing at
+  offsets that might belong to a different field on that component type.
+- **`txt`/`x`/`y`/`w`/`h` work on any component type** — these use
+  pattern search (`tft::patch_text`/`patch_geom`), which doesn't need to
+  know the record layout at all.
+- **No font/image data.** `font` only changes which already-compiled font
+  *id* a component references — this toolkit has no font compiler and
+  never will until someone reverse-engineers the `.zi` font-blob format
+  (see the `.HMI` format doc §2).
+- **No structural changes.** Components aren't added, removed, or
+  reordered. A spec can't introduce a new `objname` that isn't already in
+  the scaffold.
+- **`page` is not yet enforced.** It's recorded for documentation/future
+  multi-page support, but `compile` currently searches across all pages
+  of the decoded scaffold `.HMI` for each `objname` rather than scoping to
+  the named page. If your scaffold reuses an `objname` across pages,
+  disambiguating is not yet possible — give distinct names instead.
+- **Single target.** `target` must be the one target this toolkit
+  supports (see [`docs/targets.md`](targets.md)); anything else is a hard
+  error, checked against the scaffold `.tft`'s own header dimensions too.
+
+## Example
+
+See [`examples/page0.yaml`](../examples/page0.yaml) for a worked example
+adapted from the original reverse-engineering session's draft DSL, tied to
+a specific firmware's touch-id table.
