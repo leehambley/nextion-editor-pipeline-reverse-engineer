@@ -50,7 +50,7 @@ order:
 
 | field | width | notes |
 |---|---|---|
-| height | `u16` LE | constant across all entries in a given file (`28` for all three reference fonts — plausibly font point size related, not confirmed against a font with mixed glyph heights) |
+| height | `u16` LE | constant across all entries *within* a given file, but differs *between* files consistently with point size: `37` for `mono72.zi`, `28` for `mono60.zi`, `23` for `mono50.zi` (not a 1:1 ratio with the point-size byte in §1.1 — e.g. 72pt → 37px, not 72px — consistent with "point size" and "pixel height" being different units, as is normal for font metrics) |
 | glyph data offset | `u32` LE | **not a byte offset into this file** — see §1.4 |
 | width | `u16` LE | per-glyph advance/pixel width, varies per character |
 | character code | `u16` LE | ASCII/Unicode code point this entry describes |
@@ -63,17 +63,54 @@ general, end = wherever the character codes stop being sequential/valid
 attribute-record table — see `nextion-hmi-format.md` §2's "open problem"
 note for the analogous situation there).
 
-### 1.4 Glyph data — **[not decoded, see §5]**
+### 1.4 The "glyph data offset" field is synthetic, not a real pointer **[confirmed]**
 
 The "glyph data offset" field in §1.3 is **not** a byte offset into the
-`.zi` file: sampled values (e.g. `243712`, `4237824`) far exceed the
-file's actual size (`16881` bytes for `mono60.zi`), and aren't a clean
-multiple of the file size either. This is almost certainly a **bit
-offset** into a packed/compressed bitstream (`243712 / 8 = 30464` bytes
-— still larger than the file, but consistent with per-glyph run-length
-or Huffman-style compression where a handful of glyphs can expand well
-past their compressed footprint). Nothing about the actual raster or
-vector encoding of a glyph's pixels has been investigated. See §5.
+`.zi` file, and does not point at compressed glyph data at all — it is
+fully explained by a simple formula, confirmed exactly (zero mismatches)
+across all 94 entries in every reference file:
+
+```
+offset[n] = offset[0] + 256 * sum(width[0..n))
+```
+
+i.e. it's `256 × ` a running total of *declared advance widths* (§1.3's
+`width` field), plus a fixed per-file base (`243712` — identical across
+all three reference files regardless of point size, so this constant is
+not derived from anything file-specific either). This was confirmed by
+computing the predicted offset for every entry from `width` alone and
+comparing byte-for-byte against the table's actual `offset` field — 94/94
+exact matches in `mono50.zi`, and the same base constant across all three
+files. **Practically: this field cannot be used to locate a glyph's real
+compressed data in the file.** It is most plausibly a horizontal
+cursor/advance value in a coordinate space used by the *display
+controller* at render time (a fixed-point subpixel cursor, given the
+×256 scaling), unrelated to this file's own byte layout.
+
+### 1.5 Glyph data — **[not decoded, see §5]**
+
+The actual per-glyph compressed byte data starts immediately after the
+glyph table (§1.3) and runs to the end of the file, but **no reliable way
+to find each glyph's individual byte boundary within that region has
+been found** (see §1.4 — the natural candidate field turned out not to
+point here at all). What's confirmed:
+
+- The data is genuinely compressed, not a raw bitmap: an uncompressed
+  1-bit-per-pixel bitmap (row-major, byte-aligned per row) would need
+  roughly 3× more bytes than the file actually contains, for both
+  row-major and column-major layout assumptions.
+- The total glyph-data region size divided by the sum of all glyphs'
+  declared `width` values is very close to `1.0` (`1.007` for
+  `mono50.zi` — 11,822 real bytes vs. 11,736 sum-of-widths) — suggesting
+  average compressed size is close to 1 byte per pixel-column, though
+  this is a whole-file average, not evidence for any individual glyph's
+  exact byte length.
+- A byte-value frequency count of the glyph-data region shows `0x1f` (31)
+  as by far the most common byte (~15% of all bytes) — consistent with
+  it being a "background/blank run" marker in some run-length scheme,
+  since most of a monospace ASCII glyph set's pixels are background.
+
+See §5 for the specific decoding hypotheses tried and ruled out.
 
 ## 2. How `.zi` fonts are packed into a compiled `.tft`
 
@@ -157,16 +194,72 @@ this means:
 
 ## 5. What's still unknown (the actual hard problem)
 
-- **Glyph raster/vector encoding.** The `.zi` extension and the
-  bit-offset-not-byte-offset table field (§1.4) both point to a
-  compressed, non-trivial encoding — likely per-glyph
-  run-length/Huffman-style compression of a monochrome bitmap, given the
-  Nextion Editor's public documentation describes its fonts as
-  monochrome anti-aliased bitmaps rather than outline/vector fonts, but
-  this has **not** been verified against these files' actual bytes.
-  Cracking this is a project-sized effort on its own, comparable in
-  scope to the `.HMI`/`.tft` container-level work already flagged as
-  unsolved.
+### 5.1 Glyph raster encoding — attempted, not cracked
+
+An external, unfinished community write-up was found describing a
+"ZI font format version 5" (title: "ZI font format version 5
+specification", explicitly marked "unfinished... use at own risk") with
+a documented per-glyph encoding: a leading mode byte (`0x01` = black/white,
+`0x03` = 3-bit antialiased), followed by bytes of the form `YZdddddd`
+(2-bit mode, 6-bit run length) for antialiased data, with 4 sub-modes for
+runs of transparent/opaque pixels and packed 3-bit alpha values. **This
+spec's field *positions* in the header/table do not match our reference
+files** — applying its exact byte offsets to our files' header/table
+produces nonsensical values (e.g. a "character width" field reading as
+the glyph's line-orientation byte). This could mean our files are a
+different `.zi` sub-version, or that spec's write-up (itself marked
+unfinished) has errors. Its *general approach* — run-length codes with a
+mode indicator in the top bits of each byte — remains the most plausible
+lead, but applying its exact bit-layout to our glyph data did not
+produce a recognizable glyph either (see below).
+
+**Decoding attempts made and ruled out** (against `mono50.zi`'s `!`
+glyph, height=23, width=39, chosen for being visually simple — a stem
+and a dot):
+
+- **Raw uncompressed 1bpp**, row-major and column-major, byte-aligned per
+  row/column — ruled out by size alone (§1.5).
+- **Full-byte alternating RLE** (each byte = run length of alternating
+  background/ink color, starting from background) — column-major
+  reshape produced a *convincing, clean vertical stem* for the first
+  ~7-8 columns (a real positive signal — this matches `!`'s actual
+  shape), but degraded into an unstructured diagonal noise pattern for
+  all subsequent columns. Tried both starting colors (background-first
+  and ink-first); tried resetting the alternation state at each column
+  boundary vs. carrying it across boundaries — same result each time.
+  Row-major reshape of the same decode produced no recognizable
+  structure at all, confirming column-major is the correct axis, but the
+  run-length/alternation model itself breaks down partway through.
+- **Nibble-split RLE** (each byte = two 4-bit run lengths) — produced far
+  too few pixels (38 from 11 bytes) to plausibly encode a full glyph;
+  not pursued further.
+- **The external spec's exact `YZdddddd` bit scheme**, both the
+  black/white variant (2-bit mode + 6-bit run, tried against a byte
+  presumed to be the `0x01` mode marker) and the 3-bit-antialiased
+  variant (as literally specified: `00`=transparent run,
+  `01`=opaque run, `10`=short run + 1 alpha pixel, `11`=2 packed alpha
+  pixels) — both produced either an all-blank or an incoherent sparse
+  scatter of pixels, no matter which nearby byte was tried as the
+  starting mode marker. The literal `0x01`/`0x03` mode-marker bytes the
+  spec describes are present in the file (found `0x03` roughly once per
+  100-150 bytes, `0x01` far more rarely) but starting decode from any
+  observed `0x03` position did not produce a recognizable glyph either.
+
+**Why this stalled**: with no confirmed way to find a glyph's true byte
+boundary (§1.4's field being synthetic removed the one candidate that
+looked promising), every attempt above had to *guess* both the start
+position and the bit-level codec simultaneously — too many degrees of
+freedom to converge by inspection alone. **The single most effective
+next step, identified during this session but not yet available**: a
+Nextion Editor-generated `.zi` file containing exactly **one** glyph
+(e.g. a single monospace character, anti-aliasing off, ASCII encoding).
+With only one glyph, the byte range is unambiguous (`file_size -
+table_end`, no boundary-finding needed), removing the biggest confound
+above. This is a natural task for whoever has Windows + Nextion Editor
+access to pick up before further blind guessing.
+
+### 5.2 Other open questions
+
 - **Font directory / id-to-offset mapping in `.tft`** (§2/§3) — not
   located. This blocks adding a *new* font to a `.tft` (as opposed to
   referencing an existing one by id).
