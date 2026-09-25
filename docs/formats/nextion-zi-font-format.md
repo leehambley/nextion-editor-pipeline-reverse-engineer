@@ -353,6 +353,15 @@ that also explains `a` and `M` isn't enough to call this solved.
 
 ### 5.1.2 Suggested next steps for whoever picks this back up
 
+**In progress**: `zilib.dll`, found alongside the Nextion Editor
+install, is a plausible candidate for the actual font
+compiler/encoder — being disassembled by hand in Ghidra. If that pans
+out it replaces every hypothesis in §5.1/§5.1.1 with ground truth
+(the real encoder logic) rather than inference from output, and is a
+categorically stronger approach than anything else in this section.
+
+Other ideas, useful if the DLL route stalls:
+
 - **Cross-check the `2,1`-marker segmentation against `M`'s own segment**
   (12 bytes, from `-m-no-aa.zi`) using the same top-bit/7-bit-run scheme,
   varying width/height exhaustively (not just the values guessed here)
